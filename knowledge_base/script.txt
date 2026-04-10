@@ -1,0 +1,11 @@
+# Scrape to CSV (default)
+python web_scraper.py --url https://www.accionlabs.com/about-us#leadership
+
+# Scrape to JSON
+python web_scraper.py --url https://www.accionlabs.com/about-us#leadership --output json
+
+# Export both formats, limit to 100 pages, depth 4
+python web_scraper.py --url https://www.accionlabs.com/about-us#leadership --output both --max-pages 300 --max-depth 4
+
+# Custom output filename, slower delay (polite to server)
+python web_scraper.py --url https://www.accionlabs.com/about-us#leadership --out-file my_data --delay 1.0
