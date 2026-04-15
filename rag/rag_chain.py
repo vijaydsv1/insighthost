@@ -1,40 +1,34 @@
-from langchain_community.vectorstores import FAISS
+from langchain_pinecone import PineconeVectorStore
 from rag.embeddings import get_embeddings
 from transformers import pipeline
-import json
+from pinecone import Pinecone
+import os
+from dotenv import load_dotenv
 
-# Load once
+load_dotenv()
+
+PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
+INDEX_NAME = os.getenv("PINECONE_INDEX")
+
+pc = Pinecone(api_key=PINECONE_API_KEY)
+
+index = pc.Index(INDEX_NAME)
+
 embeddings = get_embeddings()
 
-db = FAISS.load_local(
-    "vector_db",
-    embeddings,
-    allow_dangerous_deserialization=True
+vector_store = PineconeVectorStore(
+    index=index,
+    embedding=embeddings
 )
 
 generator = pipeline("text-generation", model="EleutherAI/gpt-neo-125M")
 
 
-def clean_document(text):
-
-    try:
-        data = json.loads(text.replace("'", '"'))
-
-        title = data.get("title", "")
-        description = data.get("meta_description", "")
-        body = data.get("body_preview", "")
-
-        return f"{title}. {description}. {body}"[:400]
-
-    except:
-        return text[:400]
-
-
 def get_rag_response(query):
 
-    docs = db.similarity_search(query, k=2)
+    docs = vector_store.similarity_search(query, k=2)
 
-    context = "\n".join([clean_document(doc.page_content) for doc in docs])
+    context = "\n".join([doc.page_content for doc in docs])
 
     prompt = f"""
 Answer the question using the context.
