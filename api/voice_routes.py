@@ -1,19 +1,31 @@
 from fastapi import APIRouter
-from pydantic import BaseModel
+
+from speech.stt import listen
+from speech.tts import speak
 from pipeline.assistant_pipeline import run_assistant
 
 router = APIRouter()
 
-class QueryRequest(BaseModel):
-    question: str
 
+@router.get("/voice")
+def voice():
 
-@router.post("/ask")
-def ask_question(request: QueryRequest):
+    query = listen()
 
-    answer = run_assistant(request.question)
+    if not query:
+        return {
+            "query": "",
+            "answer": "Sorry, I could not hear you. Please try again.",
+            "audio": ""
+        }
+
+    # run assistant pipeline
+    answer = run_assistant(query)
+
+    audio = speak(answer)
 
     return {
-        "question": request.question,
-        "answer": answer
+        "query": query,
+        "answer": answer,
+        "audio": f"/static/{audio}"
     }

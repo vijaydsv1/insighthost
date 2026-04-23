@@ -2,10 +2,16 @@ def classify_intent(text):
 
     text = text.lower()
 
-    if "what" in text or "who" in text:
-        return "information"
+    if any(word in text for word in ["salary","confidential","password","internal"]):
+        return "RESTRICTED"
 
-    if "help" in text:
-        return "help"
+    if any(word in text for word in ["service","offer","provide"]):
+        return "COMPANY_INFO"
 
-    return "general"
+    if any(word in text for word in ["project","portfolio","case study"]):
+        return "PROJECT_DETAILS"
+
+    if len(text.split()) <= 2:
+        return "UNCLEAR"
+
+    return "GENERAL"

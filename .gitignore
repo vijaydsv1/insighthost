@@ -1,6 +1,18 @@
-venv/
+# Python
 __pycache__/
 *.pyc
+
+# Virtual env
+venv/
+
+# Environment variables
 .env
-vector_db/
-logs/
+
+# Audio files
+*.mp3
+
+# Logs
+*.log
+
+# OS files
+.DS_Store

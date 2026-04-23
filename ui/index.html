@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+<title>InsightHost AI</title>
+
+<style>
+
+body{
+font-family:Arial;
+background:#0f172a;
+color:white;
+display:flex;
+flex-direction:column;
+align-items:center;
+height:100vh;
+margin:0;
+}
+
+h1{margin-top:20px;}
+
+#orb{
+width:130px;
+height:130px;
+border-radius:50%;
+background:radial-gradient(circle,#38bdf8,#1e293b);
+margin-top:25px;
+box-shadow:0 0 40px #38bdf8;
+transition:0.3s;
+}
+
+.listening{
+box-shadow:0 0 60px #22c55e;
+transform:scale(1.1);
+}
+
+#chat{
+width:650px;
+height:420px;
+background:#1e293b;
+border-radius:12px;
+padding:20px;
+overflow-y:auto;
+margin-top:25px;
+}
+
+.message{
+margin-bottom:12px;
+line-height:1.5;
+}
+
+.user{color:#38bdf8;}
+.bot{color:#22c55e;}
+
+#controls{
+margin-top:20px;
+}
+
+input{
+width:420px;
+padding:10px;
+border-radius:6px;
+border:none;
+}
+
+button{
+padding:10px 15px;
+border:none;
+border-radius:6px;
+background:#38bdf8;
+color:white;
+cursor:pointer;
+}
+
+</style>
+</head>
+
+<body>
+
+<h1>InsightHost AI</h1>
+
+<div id="orb"></div>
+
+<div id="chat"></div>
+
+<div id="controls">
+<input id="question" placeholder="Ask about Accion services..." />
+<button onclick="send()">Send</button>
+</div>
+
+<script>
+
+let recognition
+let assistantAwake=false
+let isListening=false
+
+const orb=document.getElementById("orb")
+
+// ----------------------
+// START VOICE
+// ----------------------
+
+async function startVoice(){
+
+const SpeechRecognition =
+window.SpeechRecognition || window.webkitSpeechRecognition
+
+if(!SpeechRecognition){
+alert("Voice recognition only works in Chrome")
+return
+}
+
+await navigator.mediaDevices.getUserMedia({audio:true})
+
+recognition=new SpeechRecognition()
+
+recognition.continuous=false
+recognition.interimResults=false
+recognition.lang="en-US"
+
+startListening()
+
+}
+
+// ----------------------
+// LISTEN
+// ----------------------
+
+function startListening(){
+
+if(isListening) return
+
+isListening=true
+
+recognition.start()
+
+addMessage("🎤 Listening... say 'Hey InsightHost'","bot")
+
+}
+
+// ----------------------
+// SPEECH RESULT
+// ----------------------
+
+recognition.onresult = async function(event){
+
+let speech=event.results[0][0].transcript.toLowerCase().trim()
+
+console.log("Heard:",speech)
+
+
+// WAKE WORD
+if(!assistantAwake && speech.includes("hey insighthost")){
+
+assistantAwake=true
+
+orb.classList.add("listening")
+
+addMessage("You: "+speech,"user")
+
+let wake=await fetch("/wake")
+let data=await wake.json()
+
+addMessage("InsightHost: "+data.message,"bot")
+
+await playAudio(data.audio)
+
+startListening()
+
+return
+
+}
+
+
+// QUESTION
+if(assistantAwake){
+
+addMessage("You: "+speech,"user")
+
+let res=await fetch("/ask",{
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({question:speech})
+})
+
+let data=await res.json()
+
+addMessage("InsightHost: "+data.answer,"bot")
+
+await playAudio(data.audio)
+
+assistantAwake=false
+
+orb.classList.remove("listening")
+
+startListening()
+
+}
+
+}
+
+// ----------------------
+// ERRORS
+// ----------------------
+
+recognition.onerror=function(event){
+
+console.log("Speech error:",event.error)
+
+isListening=false
+
+setTimeout(startListening,1000)
+
+}
+
+recognition.onend=function(){
+
+isListening=false
+
+setTimeout(startListening,800)
+
+}
+
+// ----------------------
+// PLAY AUDIO
+// ----------------------
+
+function playAudio(url){
+
+return new Promise((resolve)=>{
+
+if(!url){
+resolve()
+return
+}
+
+let audio=new Audio(url+"?t="+Date.now())
+
+audio.onended=resolve
+
+audio.play()
+
+})
+
+}
+
+// ----------------------
+// CHAT UI
+// ----------------------
+
+function addMessage(text,cls){
+
+let chat=document.getElementById("chat")
+
+let div=document.createElement("div")
+
+div.className="message "+cls
+
+div.innerText=text
+
+chat.appendChild(div)
+
+chat.scrollTop=chat.scrollHeight
+
+}
+
+// ----------------------
+// TEXT CHAT
+// ----------------------
+
+async function send(){
+
+let input=document.getElementById("question")
+
+let q=input.value.trim()
+
+if(!q) return
+
+addMessage("You: "+q,"user")
+
+input.value=""
+
+let res=await fetch("/ask",{
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({question:q})
+})
+
+let data=await res.json()
+
+addMessage("InsightHost: "+data.answer,"bot")
+
+playAudio(data.audio)
+
+}
+
+// ----------------------
+// AUTO START
+// ----------------------
+
+window.onload=startVoice
+
+</script>
+
+</body>
+</html>

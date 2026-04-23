@@ -1,43 +1,55 @@
-from speech.stt import listen
+import pvporcupine
+import pyaudio
+import struct
+
+from rag.rag_chain import get_rag_response
 from speech.tts import speak
-from pipeline.assistant_pipeline import run_assistant
-
-
-WAKE_WORD = "insight host"
+from speech.stt import listen
 
 
 def start_voice_assistant():
 
-    speak("Hello, I am InsightHost. Say Hey InsightHost to start.")
+    print("🎤 Voice assistant started")
+    print("Say: 'Hey InsightHost'")
+
+    porcupine = pvporcupine.create(
+        keywords=["computer"]  # wake word (closest to "hey insighthost")
+    )
+
+    pa = pyaudio.PyAudio()
+
+    stream = pa.open(
+        rate=porcupine.sample_rate,
+        channels=1,
+        format=pyaudio.paInt16,
+        input=True,
+        frames_per_buffer=porcupine.frame_length
+    )
 
     while True:
 
-        text = listen()
+        pcm = stream.read(porcupine.frame_length)
 
-        if not text:
-            continue
+        pcm = struct.unpack_from("h" * porcupine.frame_length, pcm)
 
-        text = text.lower()
+        result = porcupine.process(pcm)
 
-        if WAKE_WORD in text:
+        if result >= 0:
 
-            speak("Hello. How can I help you?")
+            print("\n👂 Wake word detected")
+
+            speak("Hello, I am InsightHost. How can I help you?")
 
             query = listen()
 
             if not query:
+                speak("Sorry, I could not hear you.")
                 continue
 
-            response = run_assistant(query)
+            print("User:", query)
 
-            speak(response)
+            answer = get_rag_response(query)
 
-        elif "exit" in text or "stop" in text:
+            print("InsightHost:", answer)
 
-            speak("Goodbye")
-
-            break
-
-
-if __name__ == "__main__":
-    start_voice_assistant()
+            speak(answer)

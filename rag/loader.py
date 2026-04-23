@@ -1,7 +1,9 @@
 import os
 import json
 import pandas as pd
-from langchain.schema import Document
+
+from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 DATA_PATH = "knowledge_base"
 
@@ -14,21 +16,29 @@ def load_documents():
 
         filepath = os.path.join(DATA_PATH, file)
 
-        # TXT files
+        # -----------------------------
+        # TXT FILES
+        # -----------------------------
         if file.endswith(".txt"):
 
             with open(filepath, "r", encoding="utf-8") as f:
 
-                text = f.read()
+                text = f.read().strip()
 
-                documents.append(
-                    Document(
-                        page_content=text,
-                        metadata={"source": file}
+                if text:
+                    documents.append(
+                        Document(
+                            page_content=text,
+                            metadata={
+                                "source": file,
+                                "type": "text"
+                            }
+                        )
                     )
-                )
 
-        # JSON files
+        # -----------------------------
+        # JSON FILES (SCRAPED DATA)
+        # -----------------------------
         elif file.endswith(".json"):
 
             with open(filepath, "r", encoding="utf-8") as f:
@@ -39,36 +49,84 @@ def load_documents():
 
                     for item in data:
 
-                        documents.append(
-                            Document(
-                                page_content=str(item),
-                                metadata={"source": file}
+                        category = item.get("category", "")
+                        pillar = item.get("pillar", "")
+                        service = item.get("service", "")
+                        content = item.get("content", "")
+                        source = item.get("source", file)
+
+                        # Build structured text
+                        text = f"""
+Category: {category}
+Pillar: {pillar}
+Service: {service}
+
+{content}
+""".strip()
+
+                        if text:
+
+                            documents.append(
+                                Document(
+                                    page_content=text,
+                                    metadata={
+                                        "category": category,
+                                        "pillar": pillar,
+                                        "service": service,
+                                        "source": source,
+                                        "type": "json"
+                                    }
+                                )
                             )
-                        )
 
                 else:
 
                     documents.append(
                         Document(
-                            page_content=str(data),
-                            metadata={"source": file}
+                            page_content=json.dumps(data),
+                            metadata={
+                                "source": file,
+                                "type": "json"
+                            }
                         )
                     )
 
-        # CSV files
+        # -----------------------------
+        # CSV FILES
+        # -----------------------------
         elif file.endswith(".csv"):
 
             df = pd.read_csv(filepath, on_bad_lines="skip")
 
             for _, row in df.iterrows():
 
-                text = " ".join(map(str, row.values))
+                text = " ".join(map(str, row.values)).strip()
 
-                documents.append(
-                    Document(
-                        page_content=text,
-                        metadata={"source": file}
+                if text:
+
+                    documents.append(
+                        Document(
+                            page_content=text,
+                            metadata={
+                                "source": file,
+                                "type": "csv"
+                            }
+                        )
                     )
-                )
 
-    return documents
+    print(f"Loaded {len(documents)} documents")
+
+    # -----------------------------
+    # DOCUMENT CHUNKING
+    # -----------------------------
+
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000,
+        chunk_overlap=200
+    )
+
+    split_docs = splitter.split_documents(documents)
+
+    print(f"Created {len(split_docs)} chunks")
+
+    return split_docs

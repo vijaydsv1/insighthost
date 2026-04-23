@@ -1,0 +1,9 @@
+import datetime
+
+def log_query(query, response):
+
+    with open("logs/query_log.txt","a") as f:
+
+        f.write(
+            f"{datetime.datetime.now()} | {query} | {response}\n"
+        )
