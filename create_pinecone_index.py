@@ -1,26 +1,66 @@
-from pinecone import Pinecone, ServerlessSpec
 import os
+
 from dotenv import load_dotenv
+from pinecone import Pinecone, ServerlessSpec
+
 
 load_dotenv()
 
+
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-INDEX_NAME = os.getenv("PINECONE_INDEX")
+PINECONE_INDEX = os.getenv("PINECONE_INDEX")
 
+
+# -----------------------------
+# Validate Environment Variables
+# -----------------------------
+
+if not PINECONE_API_KEY:
+
+    raise ValueError(
+        "Missing PINECONE_API_KEY in .env"
+    )
+
+if not PINECONE_INDEX:
+
+    raise ValueError(
+        "Missing PINECONE_INDEX in .env"
+    )
+
+
+# -----------------------------
 # Initialize Pinecone
-pc = Pinecone(api_key=PINECONE_API_KEY)
+# -----------------------------
 
-# Check existing indexes
-existing_indexes = [index["name"] for index in pc.list_indexes()]
+pc = Pinecone(
+    api_key=PINECONE_API_KEY
+)
 
-if INDEX_NAME in existing_indexes:
 
-    print(f"Index '{INDEX_NAME}' already exists.")
+# -----------------------------
+# Existing Indexes
+# -----------------------------
+
+existing_indexes = [
+    index["name"]
+    for index in pc.list_indexes()
+]
+
+
+# -----------------------------
+# Create Index
+# -----------------------------
+
+if PINECONE_INDEX in existing_indexes:
+
+    print(
+        f"Index '{PINECONE_INDEX}' already exists."
+    )
 
 else:
 
     pc.create_index(
-        name=INDEX_NAME,
+        name=PINECONE_INDEX,
         dimension=384,
         metric="cosine",
         spec=ServerlessSpec(
@@ -29,4 +69,6 @@ else:
         )
     )
 
-    print(f"Index '{INDEX_NAME}' created successfully.")
+    print(
+        f"Index '{PINECONE_INDEX}' created successfully."
+    )

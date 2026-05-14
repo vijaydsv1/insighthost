@@ -1,3 +1,0 @@
-from voice_assistant import start_voice_assistant
-
-start_voice_assistant()

@@ -1,101 +1,93 @@
-import os
-from dotenv import load_dotenv
+from services.llm_service import generate_llm_response
+from services.media_service import extract_media_assets
 
-from pinecone import Pinecone
-from langchain_pinecone import PineconeVectorStore
-from langchain_openai import ChatOpenAI
-from langchain_groq import ChatGroq
-
-from rag.embeddings import get_embeddings
-
-load_dotenv()
-
-PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-INDEX_NAME = os.getenv("PINECONE_INDEX")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+from vector_db.pinecone_client import vector_store
 
 
-# -----------------------------
-# Initialize Pinecone
-# -----------------------------
+# =========================================================
+# Main RAG Response Function
+# =========================================================
+async def get_rag_response(query: str):
 
-pc = Pinecone(api_key=PINECONE_API_KEY)
+    try:
 
-index = pc.Index(INDEX_NAME)
+        # =====================================================
+        # Retrieve Relevant Documents
+        # =====================================================
+        docs = vector_store.similarity_search(
+            query,
+            k=4
+        )
 
+        # =====================================================
+        # No Documents Found
+        # =====================================================
+        if not docs:
 
-# -----------------------------
-# Embeddings
-# -----------------------------
+            return {
 
-embeddings = get_embeddings()
+                "answer": (
+                    "I could not find relevant information."
+                ),
 
+                "images": [],
 
-# -----------------------------
-# Vector Store
-# -----------------------------
+                "videos": [],
 
-vector_store = PineconeVectorStore(
-    index=index,
-    embedding=embeddings
-)
+                "pdfs": [],
 
+                "links": [],
 
-# -----------------------------
-# LLM
-# -----------------------------
+                "cards": [],
 
-# Primary LLM (OpenAI)
-openai_llm = ChatOpenAI(
-    model="gpt-4o-mini",
-    temperature=0.3
-)
+                "sources": [],
 
-# Backup LLM (Groq)
-groq_llm = ChatGroq(
-    model="llama-3.1-8b-instant",
-    temperature=0.3
-)
+                "metadata": {}
+            }
 
-# -----------------------------
-# RAG Response
-# -----------------------------
+        # =====================================================
+        # Build Context
+        # =====================================================
+        context_chunks = []
 
-def get_rag_response(query):
+        for doc in docs:
 
-    docs = vector_store.similarity_search(query, k=4)
+            if doc.page_content:
 
-    if not docs:
-        return "I could not find that information."
+                context_chunks.append(
+                    doc.page_content
+                )
 
-    context_text = []
-    sources = []
+        # =====================================================
+        # Final Context
+        # =====================================================
+        context = "\n\n".join(
+            context_chunks
+        )
 
-    for doc in docs:
+        # =====================================================
+        # Extract Media Assets
+        # =====================================================
+        media_assets = extract_media_assets(
+            docs
+        )
 
-        text = doc.page_content
-        meta = doc.metadata
+        # =====================================================
+        # Prompt
+        # =====================================================
+        prompt = f"""
+You are InsightHost, a realtime AI Experience Center Assistant.
 
-        if text:
-            context_text.append(text)
+Answer the user's question ONLY using the provided context.
 
-        category = meta.get("category", "")
-        service = meta.get("service", "")
-        source = meta.get("source", "")
-
-        citation = f"{category} - {service} ({source})"
-
-        sources.append(citation)
-
-    context = "\n\n".join(context_text)
-
-    prompt = f"""
-You are InsightHost, an assistant for Accion Labs.
-
-Answer the user's question using ONLY the context below.
-
-If the answer is not in the context, say you do not have that information.
+Guidelines:
+- Be professional
+- Be concise
+- Be informative
+- Do not hallucinate information
+- If information is unavailable, clearly say so
+- If relevant media exists, mention that supporting visuals,
+  videos, PDFs, or links are available
 
 Context:
 {context}
@@ -104,19 +96,104 @@ Question:
 {query}
 """
 
-    try:
-        response = openai_llm.invoke(prompt)
+        # =====================================================
+        # Generate LLM Response
+        # =====================================================
+        llm_response = await generate_llm_response(
+            prompt
+        )
+
+        answer = llm_response.get(
+            "answer",
+            "No response generated."
+        )
+
+        model_used = llm_response.get(
+            "model",
+            "unknown"
+        )
+
+        # =====================================================
+        # Final Structured Response
+        # =====================================================
+        return {
+
+            "answer": answer,
+
+            # =================================================
+            # Media
+            # =================================================
+            "images": media_assets.get(
+                "images",
+                []
+            ),
+
+            "videos": media_assets.get(
+                "videos",
+                []
+            ),
+
+            "pdfs": media_assets.get(
+                "pdfs",
+                []
+            ),
+
+            "links": media_assets.get(
+                "links",
+                []
+            ),
+
+            # =================================================
+            # Cards
+            # =================================================
+            "cards": media_assets.get(
+                "cards",
+                []
+            ),
+
+            # =================================================
+            # Sources
+            # =================================================
+            "sources": media_assets.get(
+                "sources",
+                []
+            ),
+
+            # =================================================
+            # Metadata
+            # =================================================
+            "metadata": {
+
+                "model": model_used,
+
+                "retrieved_docs": len(docs),
+
+                "query": query
+            }
+        }
+
     except Exception as e:
-        print("⚠️ OpenAI failed, switching to Groq:", e)
-        response = groq_llm.invoke(prompt)
 
-    source_text = "\n".join(set(sources))
+        print(f"RAG Chain Error: {e}")
 
-    final_answer = f"""
-{response.content}
+        return {
 
-🔗 Sources:
-{source_text}
-"""
+            "answer": (
+                "Sorry, I encountered an error while "
+                "processing your request."
+            ),
 
-    return final_answer.strip()
+            "images": [],
+
+            "videos": [],
+
+            "pdfs": [],
+
+            "links": [],
+
+            "cards": [],
+
+            "sources": [],
+
+            "metadata": {}
+        }
