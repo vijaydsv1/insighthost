@@ -58,15 +58,18 @@ const BrightSoftwareHost = () => {
       socket.onmessage = (event) => {
         const data = JSON.parse(event.data);
         if (data.answer) {
+          const hasVideos = data.videos && data.videos.length > 0;
+          
           const botMessage = {
             role: "assistant",
-            content: cleanResponseText(data.answer),
+            // 🔥 Suppress text content completely if video payloads are sent back
+            content: hasVideos ? "" : cleanResponseText(data.answer),
             images: data.images || [],
             videos: data.videos || [],
             links: data.links || []
           };
           setChat(prev => [...prev, botMessage]);
-          speak(botMessage.content);
+          if (botMessage.content) speak(botMessage.content);
         }
       };
       socket.onclose = () => { setTimeout(connectWebSocket, 3000); };
@@ -223,7 +226,15 @@ const BrightSoftwareHost = () => {
       } else {
         setInterimText(interim);
         if (final.trim() && !isAISpeakingRef.current && !stopFlagRef.current) {
-          handleTurn(final);
+          
+          if (lowerFinal.includes("pbm migration case study")) {
+            handleTurn(final, {
+              video: "/assets/video/pbm_migration_case_study.mp4",
+              answerText: "" // Left blank so no text or TTS runs
+            });
+          } else {
+            handleTurn(final);
+          }
         }
       }
     };
@@ -249,16 +260,21 @@ const BrightSoftwareHost = () => {
     setInterimText('');
     setChat(prev => [...prev, { role: 'user', content: text }]);
 
+    // 🔥 Force text visibility to clear out if user says or triggers a prompt containing "video"
+    const userPromptContainsVideo = text.toLowerCase().includes("video");
+
     try {
-      if (localMedia && (localMedia.url || localMedia.video)) {
+      if (localMedia) {
         const botMessage = {
-          role: 'assistant', content: "Here is the information.",
+          role: 'assistant', 
+          // Check if explicit video intercept or user query demands no text
+          content: (localMedia.video || userPromptContainsVideo) ? "" : (localMedia.answerText || "Here is the information."),
           images: localMedia.url ? [{ url: localMedia.url }] : [],
           videos: localMedia.video ? [{ url: localMedia.video }] : [],
           links: []
         };
         setChat(prev => [...prev, botMessage]);
-        speak(botMessage.content);
+        if (botMessage.content) speak(botMessage.content);
         return;
       }
 
@@ -271,10 +287,16 @@ const BrightSoftwareHost = () => {
           body: JSON.stringify({ question: text })
         });
         const data = await res.json();
+        
+        const hasVideos = (data.videos && data.videos.length > 0) || userPromptContainsVideo;
+
         const botMessage = {
           role: "assistant",
-          content: cleanResponseText(data.answer || ""),
-          images: data.images || [], videos: data.videos || [], links: data.links || []
+          // 🔥 Wipe output string completely if incoming REST response embeds videos
+          content: hasVideos ? "" : cleanResponseText(data.answer || ""),
+          images: data.images || [], 
+          videos: data.videos || [], 
+          links: data.links || []
         };
         setChat(prev => [...prev, botMessage]);
         if (botMessage.content) speak(botMessage.content);
@@ -283,6 +305,8 @@ const BrightSoftwareHost = () => {
   };
 
   const speak = (text) => {
+    if (!text || text.trim() === "") return; // Fallback to guard empty voice sequences
+
     stopFlagRef.current = false;
     window.speechSynthesis.cancel(); 
     isAISpeakingRef.current = true;
@@ -347,19 +371,47 @@ const BrightSoftwareHost = () => {
 
   const handleTabClick = (category) => {
     const prompts = {
-      "Our services": { text: "What specialized digital engineering and cloud services does Accion provide?", image: "/assets/OurServices.png" },
-      "our global talent base": { text: "What is the scale and reach of Accion's global talent base?", image: "/assets/GlobalTalentBase.png" },
-      "our solutions accelerators and services": { text: "How do Accion's accelerators speed up digital transformation?", image: "/assets/SolutionsAccelerators.png" },
-      "talent at accion": { text: "What defines the engineering culture at Accion?", image: "/assets/TalentAtAccion.png" },
-      "awards": { text: "What industry awards has Accion received?", image: "/assets/Awards.png" },
-      "partnerships and alliances": { text: "Which strategic partnerships does Accion leverage?", image: "/assets/Partnerships.png" }
+      "Our services": { 
+        text: "What specialized digital engineering and cloud services does Accion provide?", 
+        image: "/assets/OurServices.png",
+        answerText: "Accion provides specialized digital engineering services including cloud migration, cognitive computing, and collaborative software architecture solutions."
+      },
+      "our global talent base": { 
+        text: "What is the scale and reach of Accion's global talent base?", 
+        image: "/assets/GlobalTalentBase.png",
+        answerText: "With over 5,000 employees globally distributed across 23 global locations, our engineering pool delivers seamless scaling capacities."
+      },
+      "our solutions accelerators and services": { 
+        text: "How do Accion's accelerators speed up digital transformation?", 
+        image: "/assets/SolutionsAccelerators.png",
+        answerText: "Our 34 proprietary platforms and IP accelerators streamline software lifecycles, ensuring fast go-to-market execution."
+      },
+      "talent at accion": { 
+        text: "What defines the engineering culture at Accion?", 
+        image: "/assets/TalentAtAccion.png",
+        answerText: "Our talent engineering culture is driven by continuous learning, complex technical innovation, and enterprise scaling principles."
+      },
+      "awards": { 
+        text: "What industry awards has Accion received?", 
+        image: "/assets/Awards.png",
+        answerText: "Accion has consistently won distinguished industry awards for software architecture innovation and global delivery excellence."
+      },
+      "partnerships and alliances": { 
+        text: "Which strategic partnerships does Accion leverage?", 
+        image: "/assets/Partnerships.png",
+        answerText: "We maintain highly focused strategic cloud partnerships and software ecosystem alliances to empower our collaborative delivery chains."
+      }
     };
     const selectedPrompt = prompts[category];
     if (selectedPrompt) {
       window.speechSynthesis.cancel();
       if (!isWaked) wakeSystem();
       isConversingRef.current = true;
-      handleTurn(selectedPrompt.text, { url: selectedPrompt.image });
+      
+      handleTurn(selectedPrompt.text, { 
+        url: selectedPrompt.image,
+        answerText: selectedPrompt.answerText 
+      });
     }
   };
 
@@ -441,13 +493,15 @@ const BrightSoftwareHost = () => {
             <div key={i} className={`bubble ${msg.role === 'user' ? 'user-bubble' : 'ai-bubble'}`} style={(msg.images?.length || msg.videos?.length) ? { maxWidth: '95%', width: '95%' } : {}}>
               <div style={{ fontSize: '10px', opacity: 0.6, marginBottom: '4px', fontWeight: 800 }}>{msg.role === 'user' ? 'YOU' : 'INSIGHT HOST'}</div>
               <div style={(msg.images?.length || msg.videos?.length) ? { display: "flex", gap: "18px" } : {}}>
-                <div style={{ flex: 1 }}>{msg.content}</div>
+                
+                {/* Only render this content div if there's actually text to show */}
+                {msg.content && <div style={{ flex: 1 }}>{msg.content}</div>}
+                
                 <div style={{ width: "260px", display: "flex", flexDirection: "column", gap: "10px" }}>
                   {msg.images?.map((img, idx) => {
                     let imageUrl = img.url || img; 
                     if (!imageUrl) return null;
 
-                    // Unified local asset router bypass logic
                     const isFrontendAsset = imageUrl.startsWith('assets/') || imageUrl.startsWith('/assets/');
 
                     if (!imageUrl.startsWith('http') && !isFrontendAsset) {
@@ -484,7 +538,9 @@ const BrightSoftwareHost = () => {
                   })}
                   {msg.videos?.map((vid, idx) => {
                     let videoUrl = vid.url || vid;
-                    if (videoUrl && !videoUrl.startsWith('http')) {
+                    const isFrontendAsset = videoUrl.startsWith('assets/') || videoUrl.startsWith('/assets/');
+
+                    if (videoUrl && !videoUrl.startsWith('http') && !isFrontendAsset) {
                       let cleanPath = videoUrl.replace(/\\/g, '/');
                       cleanPath = cleanPath.replace(/^\/?media\//i, '');
                       cleanPath = cleanPath.replace(/^(knowledge_base\/|knowledgebase\/|knowledge_base-|knowledgebase-)/i, '');
@@ -520,24 +576,20 @@ const BrightSoftwareHost = () => {
                     );
                   })}
                   {msg.links?.map((link,idx)=>(
-
-                  <a
-                  key={idx}
-                  href={link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    color:"#4DA6FF",
-                    fontSize:"12px",
-                    wordBreak:"break-word",
-                    marginBottom:"8px"
-                  }}
-                  >
-
-                  {link}
-
-                  </a>
-
+                    <a
+                      key={idx}
+                      href={link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        color:"#4DA6FF",
+                        fontSize:"12px",
+                        wordBreak:"break-word",
+                        marginBottom:"8px"
+                      }}
+                    >
+                      {link}
+                    </a>
                   ))}
                 </div>
               </div>
