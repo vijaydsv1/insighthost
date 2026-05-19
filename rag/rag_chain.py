@@ -1,3 +1,5 @@
+import traceback
+import re
 from services.llm_service import generate_llm_response
 from services.media_service import extract_media_assets
 from guardrails.input_validator import validate_input
@@ -113,11 +115,15 @@ User Question: {query}
         # Dynamic Retrieval
         # =====================================================
 
-        retrieval_k=15
+        retrieval_k=10
 
-        if is_board_query and not is_ceo_query:
+        if is_ceo_query:
 
-            retrieval_k=100
+            retrieval_k=5
+
+        elif is_board_query:
+
+            retrieval_k=40
 
 
         docs=vector_store.similarity_search(
@@ -129,10 +135,21 @@ User Question: {query}
 
 
         # =====================================================
-        # Force leadership retrieval
+        # Leadership Retrieval
         # =====================================================
 
-        if is_board_query or is_ceo_query:
+        if is_ceo_query:
+
+            leadership_queries=[
+
+                "CEO",
+                "Chief Executive Officer",
+                "Founder CEO",
+                "Accion Labs CEO"
+
+            ]
+
+        elif is_board_query:
 
             leadership_queries=[
 
@@ -140,67 +157,92 @@ User Question: {query}
                 "Board Members",
                 "Leadership Team",
                 "Executive Leadership",
-                "Leadership Accion Labs",
-                "Directors",
-                "Managing Director",
-                "Chairman",
-                "CEO"
+                "Directors"
 
             ]
 
-            additional_docs=[]
+        else:
 
-            for q in leadership_queries:
-
-                try:
-
-                    temp=vector_store.similarity_search(
-                        q,
-                        k=20
-                    )
-
-                    additional_docs.extend(
-                        temp
-                    )
-
-                except Exception as e:
-
-                    print(
-                        f"leadership search failed:{e}"
-                    )
+            leadership_queries=[]
 
 
-            docs.extend(
-                additional_docs
-            )
+        additional_docs=[]
 
+        for q in leadership_queries:
 
-            # remove duplicates
+            try:
 
-            unique=[]
-
-            seen=set()
-
-
-            for d in docs:
-
-                key=(
-
-                    d.page_content[:400]
-
-                    if d.page_content
-
-                    else ""
-
+                temp=vector_store.similarity_search(
+                    q,
+                    k=15
                 )
 
-                if key not in seen:
+                additional_docs.extend(
+                    temp
+                )
 
-                    seen.add(key)
+            except Exception as e:
 
-                    unique.append(d)
+                print(
+                    f"leadership search failed:{e}"
+                )
 
-            docs=unique
+
+        docs.extend(additional_docs)
+
+            # additional_docs=[]
+
+            # for q in leadership_queries:
+
+            #     try:
+
+            #         temp=vector_store.similarity_search(
+            #             q,
+            #             k=20
+            #         )
+
+            #         additional_docs.extend(
+            #             temp
+            #         )
+
+            #     except Exception as e:
+
+            #         print(
+            #             f"leadership search failed:{e}"
+            #         )
+
+
+            # docs.extend(
+            #     additional_docs
+            # )
+
+
+            # # remove duplicates
+
+            # unique=[]
+
+            # seen=set()
+
+
+            # for d in docs:
+
+            #     key=(
+
+            #         d.page_content[:400]
+
+            #         if d.page_content
+
+            #         else ""
+
+            #     )
+
+            #     if key not in seen:
+
+            #         seen.add(key)
+
+            #         unique.append(d)
+
+            # docs=unique
 
 
 
@@ -209,7 +251,7 @@ User Question: {query}
         # Extra Retrieval
         # =====================================================
 
-        if is_board_query or is_ceo_query:
+        if is_board_query:
 
             extra_docs=[]
 
@@ -449,7 +491,7 @@ User Question: {query}
                     # Clean Interactive Description
                     # ==============================================
 
-                    clean_text=text[:600]
+                    clean_text=text[:250]
 
                     clean_text=clean_text.replace(
                         "Not specified.",
@@ -545,6 +587,19 @@ User Question: {query}
         # Final Context
         # =====================================================
 
+        if is_ceo_query:
+
+            context_chunks=context_chunks[:5]
+
+        elif is_board_query:
+
+            context_chunks=context_chunks[:15]
+
+        else:
+
+            context_chunks=context_chunks[:8]
+
+
         context="\n\n".join(
             context_chunks
         )
@@ -617,16 +672,82 @@ Question:
         # Media extraction
         # =====================================================
 
+        people=[
+
+            card["title"]
+
+            for card in director_cards
+        ]
+
         media_assets=extract_media_assets(
-            docs
+
+            docs,
+
+            query=query,
+
+            intent=(
+
+                "CEO"
+
+                if is_ceo_query
+
+                else
+
+                "BOARD"
+
+                if is_board_query
+
+                else
+
+                "GENERAL"
+
+            ),
+
+            people=people
+
         )
-
-
         filtered_images=[]
 
         filtered_videos=[]
 
         filtered_links=[]
+
+
+        # CEO STRICT MODE
+
+        if is_ceo_query:
+
+            filtered_videos=[]
+
+            director_cards=[
+
+                x for x in director_cards
+
+                if (
+
+                    "ceo"
+
+                    in str(
+                        x.get(
+                            "subtitle",
+                            ""
+                        )
+                    ).lower()
+
+                    or
+
+                    "founder"
+
+                    in str(
+                        x.get(
+                            "subtitle",
+                            ""
+                        )
+                    ).lower()
+
+                )
+
+            ]
 
 
         query_lower=query.lower()
@@ -927,6 +1048,30 @@ Question:
 
 
         filtered_images=clean_images
+
+        if is_ceo_query:
+
+            # if CEO image filtering removed everything,
+            # recover image from CEO card
+
+            if not filtered_images:
+
+                for card in director_cards:
+
+                    img = card.get(
+                        "image",
+                        ""
+                    )
+
+                    if img:
+
+                        filtered_images=[img]
+
+                        break
+
+            filtered_images=filtered_images[:1]
+
+            filtered_videos=[]
         # =====================================================
         # Board fallback images
         # =====================================================
@@ -1136,14 +1281,18 @@ Question:
 
     except Exception as e:
 
-        print(
-            f"RAG Chain Error:{e}"
-        )
+        print("\n========== RAG ERROR ==========")
+
+        traceback.print_exc()
+
+        print("ERROR:",str(e))
+
+        print("================================\n")
 
         return {
 
             "answer":
-            "Sorry, I encountered an error.",
+            f"Backend error: {str(e)}",
 
             "images":[],
 

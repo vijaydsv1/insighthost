@@ -87,9 +87,15 @@ async def generate_llm_response(
 
     except Exception as gemini_error:
 
-        print(
-            f"Gemini failed: {gemini_error}"
-        )
+        import traceback
+
+        print("\n====== GEMINI ERROR ======")
+
+        traceback.print_exc()
+
+        print(str(gemini_error))
+
+        print("==========================")
 
         print(
             "Switching to Groq fallback..."
@@ -122,9 +128,15 @@ async def generate_llm_response(
 
     except Exception as groq_error:
 
-        print(
-            f"Groq failed: {groq_error}"
-        )
+        import traceback
+
+        print("\n====== GROQ ERROR ======")
+
+        traceback.print_exc()
+
+        print(str(groq_error))
+
+        print("========================")
 
     # =====================================================
     # Final Failure Response

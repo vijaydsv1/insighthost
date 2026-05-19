@@ -1,3 +1,4 @@
+import traceback
 from rag.rag_chain import get_rag_response
 
 
@@ -44,21 +45,12 @@ async def generate_rag_response(user_query: str):
 
     except Exception as e:
 
-        print(f"RAG Service Error: {e}")
+        print("\n========== RAG SERVICE ERROR ==========")
 
-        return {
+        traceback.print_exc()
 
-            "answer": "Sorry, I encountered an issue while processing your request.",
+        print("ERROR:", str(e))
 
-            "images": [],
+        print("=======================================\n")
 
-            "videos": [],
-
-            "cards": [],
-
-            "sources": [],
-
-            "metadata": {},
-
-            "status": "error"
-        }
+        raise e

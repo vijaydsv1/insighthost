@@ -74,7 +74,16 @@ def convert_youtube_embed(url):
 # Match Local Media By Text
 # =========================================================
 
-def find_local_media(text):
+def find_local_media(
+
+    text,
+
+    intent=None,
+
+    entities=None
+
+):
+    entities = entities or []
 
     text=normalize_text(text)
 
@@ -216,7 +225,7 @@ def find_local_media(text):
 
         x["path"]
 
-        for x in video_scores[:2]
+        for x in video_scores[:1]
 
     ]
 
@@ -238,7 +247,12 @@ def find_local_media(text):
 # Main Extraction
 # =====================================================
 
-def extract_media_assets(docs):
+def extract_media_assets(
+    docs,
+    query="",
+    intent=None,
+    people=None
+):
 
     images=[]
     videos=[]
@@ -378,10 +392,29 @@ def extract_media_assets(docs):
                 )
 
 
+        search_text=(
+
+            query
+
+            + " "
+
+            + " ".join(
+                people or []
+            )
+
+        )
+
+
         local_images,local_videos=(
 
             find_local_media(
-                text
+
+                search_text,
+
+                intent=intent,
+
+                entities=people
+
             )
 
         )
@@ -559,7 +592,7 @@ def extract_media_assets(docs):
         "videos":
         list(dict.fromkeys(
             videos
-        ))[:2],
+        ))[:1],
 
         "pdfs":
         list(dict.fromkeys(
