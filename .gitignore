@@ -48,3 +48,6 @@ frontend/build/
 # =====================================================
 .coverage
 htmlcov/
+
+knowledge_base/videos/
+*.mp4

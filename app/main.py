@@ -163,3 +163,11 @@ async def shutdown_event():
     print(f"{APP_NAME} Stopped")
 
     print("===================================\n")
+
+app.mount(
+    "/media",
+    StaticFiles(
+        directory="knowledge_base"
+    ),
+    name="media"
+)
