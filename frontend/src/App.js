@@ -190,11 +190,7 @@ const BrightSoftwareHost = () => {
           setStatus('LISTENING');
           const welcomeMessage = {
             role: "assistant",
-            content: "Namaste! Welcome to the Accion Experience Center.",
-            videos: [{
-              url: "/assets/media/Innovationsummit2026.mp4",
-              mimeType: "video/mp4"
-            }]
+            content: "Namaste! Welcome to the Accion Experience Center.",            
           };
           setChat(prev => [...prev, welcomeMessage]);
           speak(welcomeMessage.content);
@@ -427,19 +423,59 @@ const BrightSoftwareHost = () => {
                   {msg.images?.map((img, idx) => (
                     <img key={idx} src={img.url} alt="Insight" style={{ width: "100%", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.1)" }} />
                   ))}
-                  {msg.videos?.map((vid, idx) => (
-                    <video 
-                      key={idx} 
-                      ref={videoRef} 
-                      src={vid.url}
-                      controls 
-                      autoPlay 
-                      style={{ width: '100%', borderRadius: '10px' }} 
-                      onPlay={() => toggleMediaMic(true)} 
-                      onPause={() => toggleMediaMic(false)} 
-                      onEnded={() => toggleMediaMic(false)}
-                    />
-                  ))}
+                  {msg.videos?.map((vid, idx) => {
+                  let videoUrl = vid.url || vid; // Handles if vid is an object or a direct string
+                  
+                  if (videoUrl && !videoUrl.startsWith('http')) {
+                    // 1. Normalize any backslashes from Windows servers
+                    let cleanPath = videoUrl.replace(/\\/g, '/');
+                    
+                    // 2. If the backend ALREADY included the leading "/media" or "media", strip it out
+                    // so we can build a standardized, clean absolute URL
+                    cleanPath = cleanPath.replace(/^\/?media\//i, '');
+
+                    // 3. Strip out any accidental leftover root folder configurations
+                    cleanPath = cleanPath.replace(/^(knowledge_base\/|knowledgebase\/|knowledge_base-|knowledgebase-)/i, '');
+
+                    // 4. Ensure our dynamic target folder structure is matched correctly
+                    if (cleanPath.startsWith('videos-')) {
+                      cleanPath = cleanPath.replace('videos-', 'videos/');
+                    }
+                    if (!cleanPath.startsWith('videos/')) {
+                      cleanPath = `videos/${cleanPath}`;
+                    }
+
+                    // 5. CRITICAL: URL Encode spaces and special characters (e.g., "Innovation summit 2026.mp4" -> "Innovation%20summit%202026.mp4")
+                    // We split by '/' so we don't accidentally encode the directory slashes themselves
+                    cleanPath = cleanPath.split('/').map(segment => encodeURIComponent(segment)).join('/');
+
+                    // 6. Build the definitive absolute address
+                    videoUrl = `http://localhost:8000/media/${cleanPath}`;
+                  }
+
+                  console.log("🎬 Sanity Check - Requesting Video From Address:", videoUrl);
+
+                  return (
+                    <div key={idx} style={{ width: '100%', marginBottom: '10px' }}>
+                      <video 
+                        src={videoUrl}
+                        controls 
+                        autoPlay 
+                        playsInline
+                        preload="metadata"
+                        style={{ width: '100%', borderRadius: '10px', backgroundColor: '#000', display: 'block' }} 
+                        onPlay={(e) => toggleMediaMic(true, e.target)} 
+                        onPause={() => toggleMediaMic(false)} 
+                        onEnded={() => toggleMediaMic(false)}
+                        onError={(e) => {
+                          console.error("❌ Failed Video Stream Target Location:", videoUrl);
+                          console.error("Browser HTML5 Error Code:", e.target.error?.code);
+                          console.error("Browser HTML5 Error Message:", e.target.error?.message);
+                        }}
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
