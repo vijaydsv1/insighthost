@@ -7,14 +7,19 @@ const BrightSoftwareHost = () => {
   const [isWaked, setIsWaked] = useState(false);
   const [mediaActive, setMediaActive] = useState(false);
 
+  const [cameraEnabled, setCameraEnabled] = useState(false);
+
   const stopFlagRef = useRef(false);
   const recognitionRef = useRef(null);
   const isActiveRef = useRef(true); 
   const isConversingRef = useRef(false);
   const isAISpeakingRef = useRef(false);
   const mediaActiveRef = useRef(false); 
-  const socketRef = useRef(null);
-  const videoRef = useRef(null); 
+ const socketRef = useRef(null);
+ const mediaVideoRef = useRef(null);
+ const cameraRef = useRef(null);
+ const greetedRef = useRef(false);
+ const userPresentRef = useRef(false);
 
   const isMutedBySystemRef = useRef(false);
   const lastSpeechEndTimeRef = useRef(0);
@@ -26,9 +31,95 @@ const BrightSoftwareHost = () => {
   };
 
   const chatEndRef = useRef(null);
+  const startCamera = async () => {
+
+    try {
+
+      const stream =
+        await navigator.mediaDevices.getUserMedia({
+          video: true
+        });
+
+      if (cameraRef.current) {
+
+        cameraRef.current.srcObject =
+          stream;
+
+        setCameraEnabled(true);
+      }
+
+    } catch (error) {
+
+      console.error(
+        "Camera access denied",
+        error
+      );
+    }
+  };
   const ACCION_RED = "#E31E24";
   const GLOW_CYAN = "#00FFFF";
 
+  const checkPersonDetection = async () => {
+
+    try {
+
+      const response = await fetch(
+        "http://localhost:8000/api/camera/status"
+      );
+
+      const data = await response.json();
+
+      console.log("Camera:", data);
+
+      if (data.person_detected) {
+
+      setStatus("PERSON DETECTED");
+
+      if (!userPresentRef.current) {
+
+        userPresentRef.current = true;
+
+        greetedRef.current = true;
+
+        setIsWaked(true);
+
+        isConversingRef.current = true;
+
+        setStatus("LISTENING");
+
+        const greeting =
+          "Welcome to InsightHost. How may I assist you today?";
+
+        const utterance =
+          new SpeechSynthesisUtterance(
+            greeting
+          );
+
+        speechSynthesis.speak(
+          utterance
+        );
+      }
+
+    } else {
+
+      setStatus("STANDBY");
+
+      userPresentRef.current = false;
+
+      greetedRef.current = false;
+
+      isConversingRef.current = false;
+    }
+
+      }
+    catch (error) {
+
+      console.error(
+        "Error checking camera status",
+        error
+      );
+    }
+  };
   const cleanResponseText = (text = "") => text
     .replace(/\s*\[Source\s*\d+\]/gi, "")
     .replace(/\s+/g, " ")
@@ -46,11 +137,23 @@ const BrightSoftwareHost = () => {
   const isChatVisible = chat.length > 0 || interimText.length > 0;
 
   useEffect(() => {
+
+    startCamera();
+    const interval = setInterval(
+      checkPersonDetection,
+      2000
+    );
+
+    return () => clearInterval(interval);
+
+  }, []);
+
+  useEffect(() => {
     const connectWebSocket = () => {
       if (socketRef.current && (socketRef.current.readyState === WebSocket.OPEN || socketRef.current.readyState === WebSocket.CONNECTING)) {
         return;
       }
-      const socket = new WebSocket('ws://localhost:8000/api/ws');
+      const socket = new WebSocket('ws://localhost:8001/api/ws');
       socket.onopen = () => {
         console.log("✅ WebSocket Connected");
         if (isWaked) setStatus(isConversingRef.current ? 'LISTENING' : 'STANDBY (Say Namaste)');
@@ -107,8 +210,8 @@ const BrightSoftwareHost = () => {
 
     window.speechSynthesis.cancel();
     
-    if (videoRef.current) {
-      videoRef.current.pause();
+    if (mediaVideoRef.current) {
+      mediaVideoRef.current.pause();
     }
     
     mediaActiveRef.current = false;
@@ -124,8 +227,8 @@ const BrightSoftwareHost = () => {
   };
 
   const resumeVideo = () => {
-    if (videoRef.current) {
-      videoRef.current.play();
+    if (mediaVideoRef.current) {
+      mediaVideoRef.current.play();
       setStatus('VIDEO PLAYING (Listening for STOP)');
       speak("Resuming video.");
     }
@@ -136,7 +239,7 @@ const BrightSoftwareHost = () => {
     setMediaActive(isActive);
     
     if (videoElement) {
-      videoRef.current = videoElement;
+      mediaVideoRef.current = videoElement;
     }
 
     if (isActive) {
@@ -174,7 +277,7 @@ const BrightSoftwareHost = () => {
         isAISpeakingRef.current = false;
         isMutedBySystemRef.current = false;
         window.speechSynthesis.cancel();
-        if (videoRef.current) videoRef.current.pause();
+        if (mediaVideoRef.current) mediaVideoRef.current.pause();
         mediaActiveRef.current = false;
         setMediaActive(false);
 
@@ -281,7 +384,7 @@ const BrightSoftwareHost = () => {
       if (socketRef.current?.readyState === WebSocket.OPEN) {
         socketRef.current.send(JSON.stringify({ question: text }));
       } else {
-        const res = await fetch(`http://localhost:8000/api/chat/ask`, {
+        const res = await fetch(`http://localhost:8001/api/chat/ask`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ question: text })
@@ -484,7 +587,27 @@ const BrightSoftwareHost = () => {
           </svg>
         </div>
       </div>
+      <div
+        style={{
+          marginTop: "10px",
+          marginBottom: "10px"
+        }}
+      >
 
+        <video
+          ref={cameraRef}
+          autoPlay
+          muted
+          playsInline
+          width="350"
+          style={{
+            borderRadius: "12px",
+            border:
+              "1px solid rgba(255,255,255,0.2)"
+          }}
+        />
+
+      </div>
       <p style={{ fontSize: '12px', color: (mediaActive || isAISpeakingRef.current) ? ACCION_RED : (isConversingRef.current ? GLOW_CYAN : '#666'), fontWeight: 600 }}>{status}</p>
 
       {isChatVisible ? (

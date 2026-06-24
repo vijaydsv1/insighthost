@@ -25,6 +25,8 @@ from utils.constants import (
     APP_VERSION
 )
 
+from api.camera_routes import router as camera_router
+
 
 # =========================================================
 # FastAPI Application
@@ -109,6 +111,11 @@ app.include_router(
 
     websocket_router,
 
+    prefix="/api"
+)
+
+app.include_router(
+    camera_router,
     prefix="/api"
 )
 
