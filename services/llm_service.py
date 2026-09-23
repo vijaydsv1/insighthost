@@ -38,13 +38,36 @@ gemini_model = genai.GenerativeModel(
 
 
 # =========================================================
-# Groq Fallback Model
+# Groq Model (Primary)
 # =========================================================
+# NOTE: Groq periodically retires/renames hosted models. If
+# this ever starts failing with a 404 "model_not_found" error
+# again, list what's currently available with:
+#   from groq import Groq
+#   Groq(api_key=...).models.list()
+# and swap in an active general-purpose chat model's id.
 groq_model = ChatGroq(
     groq_api_key=GROQ_API_KEY,
-    model_name="llama-3.1-8b-instant",
+    model_name="openai/gpt-oss-20b",
     temperature=0.3
 )
+
+
+# =========================================================
+# Timeouts
+# =========================================================
+# Neither the Gemini nor the Groq SDK calls below are
+# cancellable mid-flight, and neither has a built-in timeout.
+# Without one, a single slow/hung network call would stall
+# that request forever - in a voice kiosk, that looks exactly
+# like "listening but never responding". asyncio.wait_for
+# can't stop the underlying blocking call once started, but it
+# does stop *waiting* on it, so the request fails over
+# (Gemini -> Groq -> the final error message) instead of
+# hanging indefinitely.
+GEMINI_TIMEOUT_SECONDS = 20
+
+GROQ_TIMEOUT_SECONDS = 15
 
 
 # =========================================================
@@ -58,20 +81,83 @@ async def generate_llm_response(
     Main LLM Generation Service
 
     Responsibilities:
-    - Gemini generation
-    - Groq fallback
+    - Groq generation
+    - Gemini fallback
     - Retry handling
     - Future streaming support
     - Future model routing
     """
 
     # =====================================================
-    # Try Gemini First
+    # Try Groq First
+    # =====================================================
+    # Groq is primary: Gemini's free-tier quota (5 requests/
+    # minute) is too tight for a kiosk doing continuous
+    # conversations (each turn also spends a Gemini call on
+    # the relevance guardrail in rag_chain.py, plus video
+    # summarize/Q&A draw from the same quota). Groq is used
+    # first to keep normal chat responses off that quota
+    # entirely, with Gemini kept only as a fallback.
+    try:
+
+        groq_response = await asyncio.wait_for(
+            asyncio.to_thread(
+                groq_model.invoke,
+                prompt
+            ),
+            timeout=GROQ_TIMEOUT_SECONDS
+        )
+
+        answer = groq_response.content.strip()
+
+        return {
+
+            "answer": answer,
+
+            "model": "openai/gpt-oss-20b",
+
+            "provider": "groq"
+        }
+
+    except asyncio.TimeoutError:
+
+        print(
+            f"\nGroq timed out after "
+            f"{GROQ_TIMEOUT_SECONDS}s, "
+            f"switching to Gemini fallback..."
+        )
+
+    except Exception as groq_error:
+
+        import traceback
+
+        print("\n====== GROQ ERROR ======")
+
+        traceback.print_exc()
+
+        print(str(groq_error))
+
+        print("========================")
+
+        print(
+            "Switching to Gemini fallback..."
+        )
+
+    # =====================================================
+    # Fallback to Gemini
     # =====================================================
     try:
 
-        response = gemini_model.generate_content(
-            prompt
+        # generate_content() is a blocking network call, so it
+        # runs in a worker thread rather than on the event loop
+        # (otherwise it would stall every other concurrent
+        # request - chat, websocket, camera - for its duration).
+        response = await asyncio.wait_for(
+            asyncio.to_thread(
+                gemini_model.generate_content,
+                prompt
+            ),
+            timeout=GEMINI_TIMEOUT_SECONDS
         )
 
         answer = response.text.strip()
@@ -85,6 +171,13 @@ async def generate_llm_response(
             "provider": "google"
         }
 
+    except asyncio.TimeoutError:
+
+        print(
+            f"\nGemini also timed out after "
+            f"{GEMINI_TIMEOUT_SECONDS}s"
+        )
+
     except Exception as gemini_error:
 
         import traceback
@@ -96,47 +189,6 @@ async def generate_llm_response(
         print(str(gemini_error))
 
         print("==========================")
-
-        print(
-            "Switching to Groq fallback..."
-        )
-
-        # =================================================
-        # Small Retry Delay
-        # =================================================
-        await asyncio.sleep(1)
-
-    # =====================================================
-    # Fallback to Groq
-    # =====================================================
-    try:
-
-        groq_response = groq_model.invoke(
-            prompt
-        )
-
-        answer = groq_response.content.strip()
-
-        return {
-
-            "answer": answer,
-
-            "model": "llama-3.1-8b-instant",
-
-            "provider": "groq"
-        }
-
-    except Exception as groq_error:
-
-        import traceback
-
-        print("\n====== GROQ ERROR ======")
-
-        traceback.print_exc()
-
-        print(str(groq_error))
-
-        print("========================")
 
     # =====================================================
     # Final Failure Response

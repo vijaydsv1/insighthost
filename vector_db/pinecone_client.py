@@ -1,4 +1,5 @@
 import os
+import asyncio
 
 from dotenv import load_dotenv
 
@@ -83,3 +84,48 @@ try:
 except Exception as e:
 
     print(f"Pinecone Connection Error: {e}")
+
+
+# =========================================================
+# Safe Similarity Search
+# =========================================================
+# similarity_search() is a blocking network call with no
+# built-in timeout. Called directly from an async request
+# handler, a single slow/hung Pinecone call would block the
+# whole event loop and never return - which looks exactly
+# like the app "listening but never responding". This runs it
+# in a worker thread with a hard timeout, returning an empty
+# result instead of hanging so the caller can still respond.
+SIMILARITY_SEARCH_TIMEOUT_SECONDS = 15
+
+
+async def similarity_search_safe(query, k=10):
+
+    try:
+
+        return await asyncio.wait_for(
+
+            asyncio.to_thread(
+                vector_store.similarity_search,
+                query,
+                k=k
+            ),
+
+            timeout=SIMILARITY_SEARCH_TIMEOUT_SECONDS
+        )
+
+    except asyncio.TimeoutError:
+
+        print(
+            f"Pinecone similarity_search timed out after "
+            f"{SIMILARITY_SEARCH_TIMEOUT_SECONDS}s for "
+            f"query: {query[:50]!r}"
+        )
+
+        return []
+
+    except Exception as e:
+
+        print(f"Pinecone similarity_search failed: {e}")
+
+        return []

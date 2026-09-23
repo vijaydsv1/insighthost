@@ -26,9 +26,17 @@ async def run_assistant(
         # =====================================================
         # Input Validation
         # =====================================================
-        if not validate_input(user_query):
+        validation = validate_input(user_query)
 
-            return fallback_response("invalid")
+        if not validation["allowed"]:
+
+            response = fallback_response("invalid")
+
+            response["answer"] = validation["message"]
+
+            return response
+
+        user_query = validation["text"]
 
         # =====================================================
         # Intent Classification

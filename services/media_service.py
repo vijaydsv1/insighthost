@@ -46,7 +46,10 @@ def convert_youtube_embed(url):
             return(
                 f"https://www.youtube.com/embed/"
                 f"{video_id}"
-                f"?autoplay=1&mute=1"
+                # enablejsapi=1 is required for the frontend's
+                # postMessage play/pause commands (voice "stop"/
+                # "resume" control) to work against this embed.
+                f"?autoplay=1&mute=1&enablejsapi=1"
             )
 
 
@@ -60,7 +63,10 @@ def convert_youtube_embed(url):
             return(
                 f"https://www.youtube.com/embed/"
                 f"{video_id}"
-                f"?autoplay=1&mute=1"
+                # enablejsapi=1 is required for the frontend's
+                # postMessage play/pause commands (voice "stop"/
+                # "resume" control) to work against this embed.
+                f"?autoplay=1&mute=1&enablejsapi=1"
             )
 
     except:

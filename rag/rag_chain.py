@@ -3,11 +3,9 @@ import re
 from services.llm_service import generate_llm_response
 from services.media_service import extract_media_assets
 from guardrails.input_validator import validate_input
+from rag.graph_rag import get_relationship_context
 
-
-from vector_db.pinecone_client import vector_store
-
-import re
+from vector_db.pinecone_client import similarity_search_safe
 
 
 # =========================================================
@@ -126,7 +124,7 @@ User Question: {query}
             retrieval_k=40
 
 
-        docs=vector_store.similarity_search(
+        docs=await similarity_search_safe(
 
             query,
 
@@ -157,7 +155,9 @@ User Question: {query}
                 "Board Members",
                 "Leadership Team",
                 "Executive Leadership",
-                "Directors"
+                "Directors",
+                "Managing Director",
+                "leadership Accion Labs"
 
             ]
 
@@ -170,131 +170,24 @@ User Question: {query}
 
         for q in leadership_queries:
 
-            try:
+            temp=await similarity_search_safe(
+                q,
+                k=15
+            )
 
-                temp=vector_store.similarity_search(
-                    q,
-                    k=15
-                )
-
-                additional_docs.extend(
-                    temp
-                )
-
-            except Exception as e:
-
-                print(
-                    f"leadership search failed:{e}"
-                )
+            additional_docs.extend(
+                temp
+            )
 
 
         docs.extend(additional_docs)
 
-            # additional_docs=[]
-
-            # for q in leadership_queries:
-
-            #     try:
-
-            #         temp=vector_store.similarity_search(
-            #             q,
-            #             k=20
-            #         )
-
-            #         additional_docs.extend(
-            #             temp
-            #         )
-
-            #     except Exception as e:
-
-            #         print(
-            #             f"leadership search failed:{e}"
-            #         )
-
-
-            # docs.extend(
-            #     additional_docs
-            # )
-
-
-            # # remove duplicates
-
-            # unique=[]
-
-            # seen=set()
-
-
-            # for d in docs:
-
-            #     key=(
-
-            #         d.page_content[:400]
-
-            #         if d.page_content
-
-            #         else ""
-
-            #     )
-
-            #     if key not in seen:
-
-            #         seen.add(key)
-
-            #         unique.append(d)
-
-            # docs=unique
-
-
-
 
         # =====================================================
-        # Extra Retrieval
+        # Remove duplicates
         # =====================================================
 
-        if is_board_query:
-
-            extra_docs=[]
-
-            board_queries=[
-
-                "Board of Directors",
-                "leadership team",
-                "executive leadership",
-                "Managing Director",
-                "leadership Accion Labs",
-                "board members"
-
-            ]
-
-
-            for q in board_queries:
-
-                try:
-
-                    additional=vector_store.similarity_search(
-                        q,
-                        k=10
-                    )
-
-                    extra_docs.extend(
-                        additional
-                    )
-
-                except Exception as e:
-
-                    print(
-                        f"Extra retrieval failed:{e}"
-                    )
-
-
-            docs.extend(
-                extra_docs
-            )
-
-
-            # =================================================
-            # Remove duplicates
-            # =================================================
+        if is_board_query or is_ceo_query:
 
             unique_docs=[]
 
@@ -606,6 +499,18 @@ User Question: {query}
 
 
         # =====================================================
+        # Graph RAG: Relationship Context
+        # =====================================================
+        # Adds relationship facts (e.g. person -> role,
+        # service -> pillar) drawn from the in-process
+        # knowledge graph, when the query matches known
+        # entities. No-op ("") until the graph has been built
+        # via create_index.py.
+
+        relationship_context=get_relationship_context(query)
+
+
+        # =====================================================
         # Prompt
         # =====================================================
 
@@ -631,10 +536,15 @@ CEO Summary:
 - Make responses conversational
 - Do not use labels
 - Respond in paragraph format
+- Detect the language the Question is written in and respond
+  in that same language. If the language cannot be determined,
+  respond in English.
 
 Context:
 
 {context}
+
+{relationship_context}
 
 Question:
 
@@ -1292,7 +1202,10 @@ Question:
         return {
 
             "answer":
-            f"Backend error: {str(e)}",
+            (
+                "Sorry, I ran into a problem while "
+                "processing your question. Please try again."
+            ),
 
             "images":[],
 

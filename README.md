@@ -25,7 +25,7 @@ The system uses **Retrieval-Augmented Generation (RAG)** to ensure responses are
 * Metadata-based citations for answers
 * React frontend interface
 * FastAPI backend
-* OpenAI + Groq fallback for LLM reliability
+* Google Gemini + Groq fallback for LLM reliability
 
 ---
 
@@ -59,8 +59,8 @@ Text + Voice Response
 
 ### AI / ML
 
-* OpenAI GPT-4o-mini
-* Groq Llama Models
+* Google Gemini (gemini-2.5-flash)
+* Groq Llama Models (fallback)
 * HuggingFace Embeddings (MiniLM)
 
 ### Data & Retrieval
@@ -134,7 +134,7 @@ pip install -r requirements.txt
 Create a `.env` file in the project root.
 
 ```
-OPENAI_API_KEY=your_openai_key
+GOOGLE_API_KEY=your_gemini_key
 GROQ_API_KEY=your_groq_key
 PINECONE_API_KEY=your_pinecone_key
 PINECONE_INDEX=insighthost

@@ -11,6 +11,10 @@ __pycache__/
 # Environment Variables
 # =====================================================
 .env
+# frontend/.env holds no secrets, only the (public) backend
+# origin the built frontend talks to - tracked so a deployment
+# knows the knob exists, unlike the root .env with real API keys.
+!frontend/.env
 
 # =====================================================
 # Logs
@@ -51,3 +55,9 @@ htmlcov/
 
 knowledge_base/videos/
 *.mp4
+
+# =====================================================
+# Generated / Cache
+# =====================================================
+knowledge_base/media_captions_cache.json
+rag/graph_store.json
